@@ -1,0 +1,113 @@
+import { describe, it, expect, vi } from 'vitest';
+import { Verifier } from '../../src/services/verifier';
+import { X402Payload, X402Requirements } from '../../src/domain/types';
+import { UserSigner, Address, UserSecretKey } from '@multiversx/sdk-core';
+
+describe('Verifier Service', () => {
+    // Correctly derive Alice's address from her secret key
+    const aliceHex = '01'.repeat(32);
+    const secretKey = new UserSecretKey(Buffer.from(aliceHex, 'hex'));
+    const aliceAddress = secretKey.generatePublicKey().toAddress();
+    const aliceBech32 = aliceAddress.toBech32();
+
+    // Bob can be any valid address
+    const bobAddress = new Address(Buffer.alloc(32, 2));
+    const bobBech32 = bobAddress.toBech32();
+
+    const signer = new UserSigner(secretKey);
+
+    const createPayload = async (overrides: Partial<X402Payload> = {}): Promise<X402Payload> => {
+        const payload: Omit<X402Payload, 'signature'> = {
+            nonce: 1,
+            value: '1000000',
+            receiver: bobBech32,
+            sender: aliceBech32,
+            gasPrice: 1000000,
+            gasLimit: 50000,
+            chainID: 'D',
+            version: 1,
+            options: 0,
+            ...overrides,
+        };
+
+        const parts = [
+            payload.nonce.toString(),
+            payload.value,
+            payload.receiver,
+            payload.sender,
+            payload.gasPrice.toString(),
+            payload.gasLimit.toString(),
+            payload.data || "",
+            payload.chainID,
+            payload.version.toString(),
+            payload.options.toString()
+        ];
+        const data = parts.join('|');
+
+        const signature = await signer.sign(Buffer.from(data));
+        return { ...payload, signature: Buffer.from(signature).toString('hex') };
+    };
+
+    const requirements: X402Requirements = {
+        payTo: bobBech32,
+        amount: '1000000',
+        asset: 'EGLD',
+        network: 'multiversx:D',
+    };
+
+    it('should verify a valid signed payload', async () => {
+        const payload = await createPayload();
+        const result = await Verifier.verify(payload, requirements);
+        expect(result.isValid).toBe(true);
+        expect(result.payer).toBe(aliceBech32);
+    });
+
+    it('should fail if signature is invalid', async () => {
+        const payload = await createPayload();
+        payload.signature = '0'.repeat(128);
+        await expect(Verifier.verify(payload, requirements)).rejects.toThrow('Invalid signature');
+    });
+
+    it('should fail if expired', async () => {
+        const payload = await createPayload({ validBefore: Math.floor(Date.now() / 1000) - 100 });
+        await expect(Verifier.verify(payload, requirements)).rejects.toThrow('Transaction expired');
+    });
+
+    it('should fail if not yet valid', async () => {
+        const payload = await createPayload({ validAfter: Math.floor(Date.now() / 1000) + 100 });
+        await expect(Verifier.verify(payload, requirements)).rejects.toThrow('Transaction not yet valid');
+    });
+
+    it('should fail if receiver mismatch', async () => {
+        const payload = await createPayload();
+        const badReq = { ...requirements, payTo: aliceBech32 };
+        await expect(Verifier.verify(payload, badReq)).rejects.toThrow('Receiver mismatch');
+    });
+
+    it('should fail if insufficient amount', async () => {
+        const payload = await createPayload({ value: '500' });
+        await expect(Verifier.verify(payload, requirements)).rejects.toThrow('Insufficient amount');
+    });
+
+    it('should pass if simulation succeeds', async () => {
+        const payload = await createPayload();
+        const mockProvider = {
+            simulateTransaction: vi.fn().mockResolvedValue({
+                execution: { result: 'success' }
+            })
+        };
+        const result = await Verifier.verify(payload, requirements, mockProvider);
+        expect(result.isValid).toBe(true);
+        expect(mockProvider.simulateTransaction).toHaveBeenCalled();
+    });
+
+    it('should fail if simulation fails', async () => {
+        const payload = await createPayload();
+        const mockProvider = {
+            simulateTransaction: vi.fn().mockResolvedValue({
+                execution: { result: 'fail', message: 'invalid nonce' }
+            })
+        };
+        await expect(Verifier.verify(payload, requirements, mockProvider)).rejects.toThrow('Simulation failed: invalid nonce');
+    });
+});
