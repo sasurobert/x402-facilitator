@@ -31,6 +31,9 @@ export class JsonSettlementStorage implements ISettlementStorage {
     }
 
     async save(record: ISettlementRecord): Promise<void> {
+        if (record.isRead === undefined) {
+            record.isRead = false;
+        }
         this.records.set(record.id, record);
         this.saveToFile();
     }
@@ -53,6 +56,30 @@ export class JsonSettlementStorage implements ISettlementStorage {
         for (const [id, record] of this.records.entries()) {
             if (record.validBefore && record.validBefore < now) {
                 this.records.delete(id);
+                changed = true;
+            }
+        }
+        if (changed) {
+            this.saveToFile();
+        }
+    }
+
+    async getUnread(): Promise<ISettlementRecord[]> {
+        const unread: ISettlementRecord[] = [];
+        for (const record of this.records.values()) {
+            if (record.status === 'completed' && !record.isRead) {
+                unread.push(record);
+            }
+        }
+        return unread;
+    }
+
+    async markAsRead(ids: string[]): Promise<void> {
+        let changed = false;
+        for (const id of ids) {
+            const record = this.records.get(id);
+            if (record) {
+                record.isRead = true;
                 changed = true;
             }
         }

@@ -37,7 +37,10 @@ Create a `.env` file in the root directory:
 ```env
 PORT=3000
 NETWORK_PROVIDER=https://devnet-api.multiversx.com
-RELAYER_PEM_PATH=./relayer.pem # Optional: for gasless relaying
+NETWORK_PROVIDER=https://devnet-api.multiversx.com
+# Relayer Configuration
+RELAYER_WALLETS_DIR=./wallets/ # Directory containing shardX.pem files
+# RELAYER_PEM_PATH=./relayer.pem # Legacy single-shard support
 ```
 
 ### Running the Server

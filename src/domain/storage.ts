@@ -6,6 +6,7 @@ export interface ISettlementRecord {
     txHash?: string;
     validBefore?: number;
     createdAt: number;
+    isRead?: boolean;
 }
 
 export interface ISettlementStorage {
@@ -13,4 +14,6 @@ export interface ISettlementStorage {
     get(id: string): Promise<ISettlementRecord | null>;
     updateStatus(id: string, status: ISettlementRecord['status'], txHash?: string): Promise<void>;
     deleteExpired(now: number): Promise<void>;
+    getUnread(): Promise<ISettlementRecord[]>;
+    markAsRead(ids: string[]): Promise<void>;
 }

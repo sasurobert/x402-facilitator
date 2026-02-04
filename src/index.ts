@@ -5,6 +5,7 @@ import { CleanupService } from './services/cleanup.js';
 import { JsonSettlementStorage } from './storage/json.js';
 import { SqliteSettlementStorage } from './storage/sqlite.js';
 import { VerifyRequestSchema, SettleRequestSchema } from './domain/schemas.js';
+import { ISettlementRecord } from './domain/storage.js';
 import { ProxyNetworkProvider } from '@multiversx/sdk-network-providers';
 import { UserSigner } from '@multiversx/sdk-core';
 import { config } from './config.js';
@@ -50,6 +51,41 @@ export function createServer(dependencies: {
         } catch (error: any) {
             logger.warn({ error: error.message, body: req.body }, 'Settle request failed');
             res.status(400).json({ error: error.message });
+        }
+    });
+
+    // Event Polling (Simple Implementation)
+    app.get('/events', async (req: Request, res: Response) => {
+        try {
+            const unread = await storage.getUnread();
+
+            // Transform to Moltbot schema if needed, but for now return raw records
+            const events = unread.map((r: ISettlementRecord) => ({
+                amount: '0', // TODO: parse from storage if saved separately or kept in original payload
+                token: 'EGLD', // TODO: same
+                // For MVP, we return the record which contains the raw payload?
+                // SettlementStorage record structure is limited (id, signature, payer, status).
+                // We might need to store the FULL payload to be useful?
+                // For now, let's map what we have.
+                meta: {
+                    jobId: r.id, // Using hash as JobID effectively
+                    payload: r.id, // Or signature? Moltbot uses this payload string.
+                    sender: r.payer,
+                    txHash: r.txHash
+                    // We don't have the original 'data' field in ISettlementRecord unless we add it.
+                    // But Moltbot just needs a trigger.
+                }
+            }));
+
+            // Auto-mark as read if requested (consuming the queue)
+            if (req.query.unread === 'true' && unread.length > 0) {
+                await storage.markAsRead(unread.map((r: ISettlementRecord) => r.id));
+            }
+
+            res.json(events);
+        } catch (error: any) {
+            logger.error({ error: error.message }, 'Events poll failed');
+            res.status(500).json({ error: error.message });
         }
     });
 
