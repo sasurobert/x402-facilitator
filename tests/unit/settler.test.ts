@@ -3,10 +3,12 @@ import { Settler } from '../../src/services/settler';
 import { X402Payload } from '../../src/domain/types';
 import { ISettlementStorage } from '../../src/domain/storage';
 import { UserSigner, UserSecretKey, Address } from '@multiversx/sdk-core';
+import { RelayerManager } from '../../src/services/relayer_manager';
 
 describe('Settler Service', () => {
     let mockStorage: ISettlementStorage;
     let mockProvider: any;
+    let mockRelayerManager: any;
     let settler: Settler;
 
     const aliceHex = '01'.repeat(32);
@@ -36,11 +38,17 @@ describe('Settler Service', () => {
             save: vi.fn(),
             updateStatus: vi.fn(),
             deleteExpired: vi.fn(),
+            getUnread: vi.fn(),
+            markAsRead: vi.fn(),
         } as any;
 
         mockProvider = {
             sendTransaction: vi.fn().mockResolvedValue('tx-hash'),
         };
+
+        mockRelayerManager = {
+            getSignerForUser: vi.fn(),
+        } as unknown as RelayerManager;
 
         settler = new Settler(mockStorage, mockProvider);
     });
@@ -84,18 +92,32 @@ describe('Settler Service', () => {
     });
 
     it('should handle Relayed V3', async () => {
+        // Generate a valid address for the relayer mock
         const relayerSecret = new UserSecretKey(Buffer.alloc(32, 3));
-        const relayerSigner = new UserSigner(relayerSecret);
-        settler = new Settler(mockStorage, mockProvider, relayerSigner);
+        const relayerAddressBech32 = relayerSecret.generatePublicKey().toAddress().toBech32();
+
+        const mockRelayerSigner = {
+            getAddress: () => ({
+                bech32: () => relayerAddressBech32
+            }),
+            sign: vi.fn().mockResolvedValue(Buffer.from('relayer-sig'))
+        };
+
+        vi.mocked(mockRelayerManager.getSignerForUser).mockReturnValue(mockRelayerSigner);
+
+        settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
 
         vi.mocked(mockStorage.get).mockResolvedValue(null);
 
         const result = await settler.settle(payload);
         expect(result.success).toBe(true);
         expect(mockProvider.sendTransaction).toHaveBeenCalled();
+        expect(mockRelayerManager.getSignerForUser).toHaveBeenCalledWith(payload.sender);
 
         const sentTx = vi.mocked(mockProvider.sendTransaction).mock.calls[0][0];
         expect(sentTx.relayer).toBeDefined();
+
+        expect(sentTx.relayer.toString()).toBe(relayerAddressBech32);
         expect(sentTx.relayerSignature).toBeDefined();
     });
 });

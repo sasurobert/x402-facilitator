@@ -86,4 +86,72 @@ describe('JsonSettlementStorage', () => {
         const retrieved = await newStorage.get('persist-test');
         expect(retrieved).toMatchObject(record);
     });
+
+    it('should get unread records', async () => {
+        await storage.save({
+            id: 'read',
+            signature: 'sig',
+            payer: 'erd1...',
+            status: 'completed' as const,
+            createdAt: 100,
+            isRead: true
+        });
+        await storage.save({
+            id: 'unread',
+            signature: 'sig',
+            payer: 'erd1...',
+            status: 'completed' as const,
+            createdAt: 100,
+            isRead: false
+        });
+        await storage.save({
+            id: 'unread-default',
+            signature: 'sig',
+            payer: 'erd1...',
+            status: 'completed' as const,
+            createdAt: 100,
+            // isRead undefined -> defaults to false in save()
+        });
+        await storage.save({
+            id: 'pending',
+            signature: 'sig',
+            payer: 'erd1...',
+            status: 'pending' as const,
+            createdAt: 100,
+            isRead: false
+        });
+
+        const unread = await storage.getUnread();
+        expect(unread).toHaveLength(2);
+        expect(unread.map(r => r.id)).toContain('unread');
+        expect(unread.map(r => r.id)).toContain('unread-default');
+    });
+
+    it('should mark records as read', async () => {
+        await storage.save({
+            id: 'rec1',
+            signature: 'sig',
+            payer: 'erd1...',
+            status: 'completed' as const,
+            createdAt: 100,
+            isRead: false
+        });
+        await storage.save({
+            id: 'rec2',
+            signature: 'sig',
+            payer: 'erd1...',
+            status: 'completed' as const,
+            createdAt: 100,
+            isRead: false
+        });
+
+        await storage.markAsRead(['rec1']);
+
+        const unread = await storage.getUnread();
+        expect(unread).toHaveLength(1);
+        expect(unread[0].id).toBe('rec2');
+
+        const rec1 = await storage.get('rec1');
+        expect(rec1?.isRead).toBe(true);
+    });
 });
