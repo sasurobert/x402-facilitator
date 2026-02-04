@@ -2,7 +2,7 @@ import request from 'supertest';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createServer } from '../../src/index';
 import { JsonSettlementStorage } from '../../src/storage/json';
-import { UserSigner, UserSecretKey, Address } from '@multiversx/sdk-core';
+import { UserSigner, UserSecretKey, Address, Transaction, TransactionComputer } from '@multiversx/sdk-core';
 import fs from 'fs';
 
 describe('API E2E Tests', () => {
@@ -49,21 +49,23 @@ describe('API E2E Tests', () => {
             ...overrides,
         };
 
-        const parts = [
-            payload.nonce.toString(),
-            payload.value,
-            payload.receiver,
-            payload.sender,
-            payload.gasPrice.toString(),
-            payload.gasLimit.toString(),
-            payload.data || "",
-            payload.chainID,
-            payload.version.toString(),
-            payload.options.toString()
-        ];
-        const data = parts.join('|');
+        const tx = new Transaction({
+            nonce: BigInt(payload.nonce),
+            value: BigInt(payload.value),
+            receiver: Address.newFromBech32(payload.receiver),
+            sender: Address.newFromBech32(payload.sender),
+            gasPrice: BigInt(payload.gasPrice),
+            gasLimit: BigInt(payload.gasLimit),
+            data: payload.data ? Buffer.from(payload.data) : undefined,
+            chainID: payload.chainID,
+            version: payload.version,
+            options: payload.options
+        });
 
-        const signature = await signer.sign(Buffer.from(data));
+        const computer = new TransactionComputer();
+        const bytesToSign = computer.computeBytesForSigning(tx);
+        const signature = await signer.sign(bytesToSign);
+
         return { ...payload, signature: Buffer.from(signature).toString('hex') };
     };
 

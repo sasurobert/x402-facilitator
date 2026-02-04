@@ -56,6 +56,25 @@ export function createServer(dependencies: {
         }
     });
 
+
+
+
+    // Relayer Address Endpoint (for Caching support)
+    app.get('/relayer/address/:userAddress', (req: Request, res: Response) => {
+        const { userAddress } = req.params;
+        try {
+            if (!relayerManager) {
+                res.status(503).json({ error: 'Relayer functionality disabled' });
+                return;
+            }
+            const relayerAddress = relayerManager.getRelayerAddressForUser(userAddress);
+            res.json({ relayerAddress });
+        } catch (error: any) {
+            logger.warn({ error: error.message, userAddress }, 'Failed to get relayer address');
+            res.status(404).json({ error: error.message });
+        }
+    });
+
     // Event Polling (Simple Implementation)
     app.get('/events', async (req: Request, res: Response) => {
         try {

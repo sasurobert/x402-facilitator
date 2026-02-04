@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { Verifier } from '../../src/services/verifier';
 import { X402Payload, X402Requirements } from '../../src/domain/types';
-import { UserSigner, Address, UserSecretKey } from '@multiversx/sdk-core';
+import { UserSigner, Address, UserSecretKey, Transaction, TransactionComputer } from '@multiversx/sdk-core';
 
 describe('Verifier Service', () => {
     // Correctly derive Alice's address from her secret key
@@ -30,21 +30,23 @@ describe('Verifier Service', () => {
             ...overrides,
         };
 
-        const parts = [
-            payload.nonce.toString(),
-            payload.value,
-            payload.receiver,
-            payload.sender,
-            payload.gasPrice.toString(),
-            payload.gasLimit.toString(),
-            payload.data || "",
-            payload.chainID,
-            payload.version.toString(),
-            payload.options.toString()
-        ];
-        const data = parts.join('|');
+        const tx = new Transaction({
+            nonce: BigInt(payload.nonce),
+            value: BigInt(payload.value),
+            receiver: Address.newFromBech32(payload.receiver),
+            sender: Address.newFromBech32(payload.sender),
+            gasPrice: BigInt(payload.gasPrice), // SDK v15 logic
+            gasLimit: BigInt(payload.gasLimit),
+            data: payload.data ? Buffer.from(payload.data) : undefined,
+            chainID: payload.chainID,
+            version: payload.version,
+            options: payload.options
+        });
 
-        const signature = await signer.sign(Buffer.from(data));
+        const computer = new TransactionComputer();
+        const bytesToSign = computer.computeBytesForSigning(tx);
+        const signature = await signer.sign(bytesToSign);
+
         return { ...payload, signature: Buffer.from(signature).toString('hex') };
     };
 

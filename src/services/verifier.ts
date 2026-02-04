@@ -1,4 +1,4 @@
-import { Address, UserVerifier, Transaction } from '@multiversx/sdk-core';
+import { Address, UserVerifier, Transaction, TransactionComputer } from '@multiversx/sdk-core';
 import { X402Payload, X402Requirements } from '../domain/types.js';
 import { pino } from 'pino';
 
@@ -22,11 +22,28 @@ export class Verifier {
         }
 
         // 2. Signature Verification
+        // Use Transaction object to reconstruct the message as the SDK does
+        const tx = new Transaction({
+            nonce: BigInt(payload.nonce),
+            value: BigInt(payload.value),
+            receiver: Address.newFromBech32(payload.receiver),
+            sender: Address.newFromBech32(payload.sender),
+            gasPrice: BigInt(payload.gasPrice), // Note: Verify if payload has GasPrice or inherits
+            gasLimit: BigInt(payload.gasLimit),
+            data: payload.data ? Buffer.from(payload.data) : undefined,
+            chainID: payload.chainID,
+            version: payload.version,
+            options: payload.options // Important for some tx types
+        });
+
+        // Apply signature from payload
+        tx.signature = Buffer.from(payload.signature, 'hex');
+
+        const computer = new TransactionComputer();
+        const message = computer.computeBytesForSigning(tx);
         const senderAddress = Address.newFromBech32(payload.sender);
         const verifier = UserVerifier.fromAddress(senderAddress);
 
-        // We need to re-serialize the payload for verification.
-        const message = this.serializePayload(payload);
         const isValidSignature = await verifier.verify(message, Buffer.from(payload.signature, 'hex'));
 
         if (!isValidSignature) {
@@ -88,21 +105,8 @@ export class Verifier {
         }
     }
 
-    private static serializePayload(payload: X402Payload): Buffer {
-        const parts = [
-            payload.nonce.toString(),
-            payload.value,
-            payload.receiver,
-            payload.sender,
-            payload.gasPrice.toString(),
-            payload.gasLimit.toString(),
-            payload.data || "",
-            payload.chainID,
-            payload.version.toString(),
-            payload.options.toString()
-        ];
-        return Buffer.from(parts.join('|'));
-    }
+    // private static serializePayload removed - using Transaction.serializeForSigning() instead
+
 
     private static verifyESDT(payload: X402Payload, requirements: X402Requirements) {
         if (!payload.data?.startsWith('MultiESDTNFTTransfer')) {
