@@ -92,7 +92,7 @@ describe('Settler Service', () => {
         await expect(settler.settle(payload)).rejects.toThrow('Settlement already in progress');
     });
 
-    it('should handle Relayed V3', async () => {
+    it('should handle Relayed V3 when relayer is present in payload', async () => {
         // Generate a valid address for the relayer mock
         const relayerSecret = new UserSecretKey(Uint8Array.from(Buffer.alloc(32, 3)));
         const relayerAddressBech32 = relayerSecret.generatePublicKey().toAddress().toBech32();
@@ -110,7 +110,10 @@ describe('Settler Service', () => {
 
         vi.mocked(mockStorage.get).mockResolvedValue(null);
 
-        const result = await settler.settle(payload);
+        // MUST have relayer field to trigger relayed path
+        const payloadWithRelayer = { ...payload, relayer: relayerAddressBech32 };
+
+        const result = await settler.settle(payloadWithRelayer);
         expect(result.success).toBe(true);
         expect(mockProvider.sendTransaction).toHaveBeenCalled();
         expect(mockRelayerManager.getSignerForUser).toHaveBeenCalledWith(payload.sender);
@@ -120,6 +123,25 @@ describe('Settler Service', () => {
 
         expect(sentTx.relayer.toString()).toBe(relayerAddressBech32);
         expect(sentTx.relayerSignature).toBeDefined();
+
+        // GAS LIMIT CHECK: Should match payload exactly, no +50k
+        expect(sentTx.gasLimit.valueOf()).toBe(BigInt(payload.gasLimit));
+    });
+
+    it('should use Direct send if RelayerManager exists but payload has NO relayer', async () => {
+        settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
+        vi.mocked(mockStorage.get).mockResolvedValue(null);
+
+        // payload has no 'relayer' field
+        const result = await settler.settle(payload);
+        expect(result.success).toBe(true);
+
+        // Should NOT utilize relayer manager
+        expect(mockRelayerManager.getSignerForUser).not.toHaveBeenCalled();
+
+        // Should be direct tx
+        const sentTx = vi.mocked(mockProvider.sendTransaction).mock.calls[0][0];
+        expect(sentTx.relayer.isEmpty()).toBe(true); // Direct tx has default empty Address for relayer
     });
 
     it('should success if relayer in payload matches expected relayer', async () => {

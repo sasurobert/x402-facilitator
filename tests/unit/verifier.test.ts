@@ -103,6 +103,27 @@ describe('Verifier Service', () => {
         expect(mockProvider.simulateTransaction).toHaveBeenCalled();
     });
 
+    it('should skip simulation if relayer field is present', async () => {
+        const payload = await createPayload({ relayer: aliceBech32 }); // Self as relayer just for field presence
+        const mockProvider = {
+            simulateTransaction: vi.fn()
+        };
+        const result = await Verifier.verify(payload, requirements, mockProvider as any);
+        expect(result.isValid).toBe(true);
+        expect(mockProvider.simulateTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should handle malformed simulation response gracefully', async () => {
+        const payload = await createPayload();
+        const mockProvider = {
+            // Returns object without execution property
+            simulateTransaction: vi.fn().mockResolvedValue({ somethingElse: true })
+        };
+        // Should throw because result !== 'success' (undefined !== 'success')
+        // The error handling code: simulationResult?.execution?.result !== 'success' -> throws 'Unknown error'
+        await expect(Verifier.verify(payload, requirements, mockProvider as any)).rejects.toThrow('Simulation failed: Unknown error');
+    });
+
     it('should fail if simulation fails', async () => {
         const payload = await createPayload();
         const mockProvider = {

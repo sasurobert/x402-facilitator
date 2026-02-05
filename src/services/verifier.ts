@@ -70,7 +70,8 @@ export class Verifier {
         }
 
         // 4. Simulation
-        if (provider) {
+        // 4. Simulation
+        if (provider && !payload.relayer) {
             await this.simulate(payload, provider);
         }
 
@@ -94,8 +95,8 @@ export class Verifier {
 
         try {
             const simulationResult = await provider.simulateTransaction(tx);
-            if (simulationResult.execution.result !== 'success') {
-                const message = simulationResult.execution.message || 'Unknown error';
+            if (simulationResult?.execution?.result !== 'success') {
+                const message = simulationResult?.execution?.message || 'Unknown error';
                 logger.error({ error: message }, 'Simulation failed');
                 throw new Error(`Simulation failed: ${message}`);
             }

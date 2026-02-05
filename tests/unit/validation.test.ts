@@ -29,6 +29,15 @@ describe('Validation Schemas', () => {
         expect(result.success).toBe(true);
     });
 
+    it('should validate a valid request with optional relayer', () => {
+        const withRelayer = {
+            ...validRequest,
+            payload: { ...validRequest.payload, relayer: 'erd1qy9pzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzpzp' }
+        };
+        const result = VerifyRequestSchema.safeParse(withRelayer);
+        expect(result.success).toBe(true);
+    });
+
     it('should fail if scheme is not exact', () => {
         const invalid = { ...validRequest, scheme: 'other' };
         const result = VerifyRequestSchema.safeParse(invalid);

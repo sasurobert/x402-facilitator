@@ -51,7 +51,7 @@ export class Settler {
         try {
             let txHash: string;
 
-            if (this.relayerManager) {
+            if (this.relayerManager && payload.relayer) {
                 logger.info({ sender: payload.sender }, 'Broadcasting via Relayed V3');
                 txHash = await this.sendRelayedV3(payload);
             } else {
@@ -119,7 +119,7 @@ export class Settler {
             sender: Address.newFromBech32(payload.sender),
             relayer: relayerAddress,
             gasPrice: BigInt(payload.gasPrice), // Note: Version 2 doesn't always use custom gasPrice but inherits
-            gasLimit: BigInt(payload.gasLimit) + 50000n, // +50,000 for relayed
+            gasLimit: BigInt(payload.gasLimit), // Use signed gas limit exactly
             data: payload.data ? Uint8Array.from(Buffer.from(payload.data)) : undefined,
             chainID: payload.chainID,
             version: payload.version >= 2 ? payload.version : 2, // Ensure at least V2

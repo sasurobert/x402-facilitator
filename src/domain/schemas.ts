@@ -12,6 +12,7 @@ export const X402PayloadSchema = z.object({
     version: z.number().int().nonnegative(),
     options: z.number().int().nonnegative(),
     signature: z.string().regex(/^[0-9a-fA-F]{128}$/),
+    relayer: z.string().startsWith('erd1').optional(),
     validAfter: z.number().int().nonnegative().optional(),
     validBefore: z.number().int().nonnegative().optional(),
 });
