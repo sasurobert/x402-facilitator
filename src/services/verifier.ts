@@ -33,7 +33,8 @@ export class Verifier {
             data: payload.data ? Buffer.from(payload.data) : undefined,
             chainID: payload.chainID,
             version: payload.version,
-            options: payload.options // Important for some tx types
+            options: payload.options,
+            relayer: payload.relayer ? Address.newFromBech32(payload.relayer) : undefined
         });
 
         // Apply signature from payload
@@ -71,7 +72,7 @@ export class Verifier {
 
         // 4. Simulation
         // 4. Simulation
-        if (provider && !payload.relayer) {
+        if (provider) {
             await this.simulate(payload, provider);
         }
 
@@ -91,6 +92,7 @@ export class Verifier {
             chainID: payload.chainID,
             version: payload.version,
             signature: Buffer.from(payload.signature, 'hex'),
+            relayer: payload.relayer ? Address.newFromBech32(payload.relayer) : undefined,
         });
 
         try {

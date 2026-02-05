@@ -40,7 +40,8 @@ describe('Verifier Service', () => {
             data: payload.data ? Buffer.from(payload.data) : undefined,
             chainID: payload.chainID,
             version: payload.version,
-            options: payload.options
+            options: payload.options,
+            relayer: payload.relayer ? Address.newFromBech32(payload.relayer) : undefined
         });
 
         const computer = new TransactionComputer();
@@ -103,14 +104,16 @@ describe('Verifier Service', () => {
         expect(mockProvider.simulateTransaction).toHaveBeenCalled();
     });
 
-    it('should skip simulation if relayer field is present', async () => {
-        const payload = await createPayload({ relayer: aliceBech32 }); // Self as relayer just for field presence
+    it('should NOT skip simulation even if relayer field is present', async () => {
+        const payload = await createPayload({ relayer: aliceBech32 });
         const mockProvider = {
-            simulateTransaction: vi.fn()
+            simulateTransaction: vi.fn().mockResolvedValue({
+                execution: { result: 'success' }
+            })
         };
         const result = await Verifier.verify(payload, requirements, mockProvider as any);
         expect(result.isValid).toBe(true);
-        expect(mockProvider.simulateTransaction).not.toHaveBeenCalled();
+        expect(mockProvider.simulateTransaction).toHaveBeenCalled();
     });
 
     it('should handle malformed simulation response gracefully', async () => {
