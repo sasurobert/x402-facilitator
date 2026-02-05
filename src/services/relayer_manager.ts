@@ -74,4 +74,21 @@ export class RelayerManager {
 
         throw new Error(`No relayer configured for user ${userAddressStr}`);
     }
+
+    public getRelayerAddressForUser(userAddressStr: string): string {
+        // Multi-shard check
+        if (this.addresses.size > 0) {
+            const userAddress = new Address(userAddressStr);
+            const shard = this.getShard(userAddress);
+            const relayerAddress = this.addresses.get(shard);
+            if (relayerAddress) return relayerAddress;
+        }
+
+        // Fallback to single signer
+        if (this.singleSigner) {
+            return this.singleSigner.getAddress().bech32();
+        }
+
+        throw new Error(`No relayer configured for user ${userAddressStr}`);
+    }
 }
