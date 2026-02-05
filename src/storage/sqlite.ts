@@ -15,36 +15,35 @@ export class SqliteSettlementStorage implements ISettlementStorage {
 
         await this.db.exec(`
             CREATE TABLE IF NOT EXISTS settlements (
-                id TEXT PRIMARY KEY,
-                signature TEXT NOT NULL,
-                payer TEXT NOT NULL,
-                status TEXT NOT NULL,
-                txHash TEXT,
-                validBefore INTEGER,
                 createdAt INTEGER NOT NULL,
-                isRead INTEGER DEFAULT 0
+                isRead INTEGER DEFAULT 0,
+                amount TEXT,
+                token TEXT,
+                jobId TEXT
             )
         `);
         // Migration support (simple check)
         try {
             await this.db.exec(`ALTER TABLE settlements ADD COLUMN isRead INTEGER DEFAULT 0`);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (_e) { /* Column likely exists */ }
+        } catch { /* Column likely exists */ }
 
         try {
             await this.db.exec(`ALTER TABLE settlements ADD COLUMN amount TEXT`);
             await this.db.exec(`ALTER TABLE settlements ADD COLUMN token TEXT`);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        } catch (_e) { /* Columns likely exist */ }
+        } catch { /* Columns likely exist */ }
+
+        try {
+            await this.db.exec(`ALTER TABLE settlements ADD COLUMN jobId TEXT`);
+        } catch { /* Columns likely exist */ }
     }
 
     async save(record: ISettlementRecord): Promise<void> {
         if (!this.db) await this.init();
         const isRead = record.isRead ? 1 : 0;
         await this.db!.run(`
-            INSERT INTO settlements(id, signature, payer, status, txHash, validBefore, createdAt, isRead, amount, token)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, record.id, record.signature, record.payer, record.status, record.txHash, record.validBefore, record.createdAt, isRead, record.amount, record.token);
+            INSERT INTO settlements(id, signature, payer, status, txHash, validBefore, createdAt, isRead, amount, token, jobId)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, record.id, record.signature, record.payer, record.status, record.txHash, record.validBefore, record.createdAt, isRead, record.amount, record.token, record.jobId);
     }
 
     async get(id: string): Promise<ISettlementRecord | null> {

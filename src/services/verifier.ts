@@ -30,7 +30,7 @@ export class Verifier {
             value: BigInt(payload.value),
             receiver: Address.newFromBech32(payload.receiver),
             sender: Address.newFromBech32(payload.sender),
-            gasPrice: BigInt(payload.gasPrice), // Note: Verify if payload has GasPrice or inherits
+            gasPrice: BigInt(payload.gasPrice),
             gasLimit: BigInt(payload.gasLimit),
             data: payload.data ? Buffer.from(payload.data) : undefined,
             chainID: payload.chainID,
@@ -105,8 +105,9 @@ export class Verifier {
                 const bytesToSign = computer.computeBytesForSigning(tx);
                 tx.relayerSignature = Uint8Array.from(await relayerSigner.sign(bytesToSign));
                 logger.info({ relayer: payload.relayer }, 'Applied relayer signature for simulation');
-            } catch (error: any) {
-                logger.warn({ error: error.message }, 'Failed to apply relayer signature for simulation, proceeding without it');
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                logger.warn({ error: errorMessage }, 'Failed to apply relayer signature for simulation, proceeding without it');
             }
         }
 
@@ -130,9 +131,10 @@ export class Verifier {
                 gasConsumed: simulationResult?.gasConsumed,
                 result: resultStatus
             }, 'Simulation successful');
-        } catch (error: any) {
-            logger.error({ error: error.message }, 'Simulation error');
-            throw new Error(`Simulation error: ${error.message}`);
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error({ error: errorMessage }, 'Simulation error');
+            throw new Error(`Simulation error: ${errorMessage}`);
         }
     }
 
@@ -173,8 +175,9 @@ export class Verifier {
                 logger.error({ actualAmount: actualAmount.toString(), requiredAmount: requirements.amount }, 'Insufficient ESDT amount');
                 throw new Error('Insufficient ESDT amount');
             }
-        } catch (error: any) {
-            logger.error({ error: error.message, receiverHex }, 'Error in verifyESDT Address creation');
+        } catch (error: unknown) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            logger.error({ error: errorMessage, receiverHex }, 'Error in verifyESDT Address creation');
             throw error;
         }
     }

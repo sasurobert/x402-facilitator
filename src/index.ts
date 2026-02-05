@@ -102,7 +102,7 @@ export function createServer(dependencies: {
                 // We might need to store the FULL payload to be useful?
                 // For now, let's map what we have.
                 meta: {
-                    jobId: r.id, // Using hash as JobID effectively
+                    jobId: r.jobId || r.id, // Prefer extracted JobID, fallback to hash
                     payload: r.id, // Or signature? Moltbot uses this payload string.
                     sender: r.payer,
                     txHash: r.txHash

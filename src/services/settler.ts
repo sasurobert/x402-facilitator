@@ -45,7 +45,8 @@ export class Settler {
             validBefore: payload.validBefore,
             createdAt: Math.floor(Date.now() / 1000),
             amount: payload.value,
-            token: 'EGLD' // Default for x402 V1/V2 pending native token support in schema
+            token: 'EGLD', // Default for x402 V1/V2 pending native token support in schema
+            jobId: this.extractJobId(payload.data)
         });
 
         try {
@@ -132,5 +133,21 @@ export class Settler {
 
         const txHash = await this.provider.sendTransaction(tx);
         return txHash;
+    }
+
+    private extractJobId(data?: string): string | undefined {
+        if (!data) return undefined;
+        try {
+            // Decoded data often comes as base64 or raw string depending on payload source.
+            // But here payload.data is likely the string format (e.g. "func@args").
+            const parts = data.split('@');
+            if (parts.length >= 2 && (parts[0] === 'init_job_with_payment' || parts[0] === 'init_job')) {
+                const jobIdHex = parts[1];
+                return Buffer.from(jobIdHex, 'hex').toString('utf8');
+            }
+        } catch {
+            // Ignore parsing errors
+        }
+        return undefined;
     }
 }

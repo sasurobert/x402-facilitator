@@ -9,6 +9,7 @@ export interface ISettlementRecord {
     isRead?: boolean;
     amount?: string;
     token?: string;
+    jobId?: string; // Extracted Job ID (for Architect flow)
 }
 
 export interface ISettlementStorage {
