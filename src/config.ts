@@ -12,4 +12,6 @@ export const config = {
     storageType: process.env.STORAGE_TYPE || 'sqlite',
     sqliteDbPath: process.env.SQLITE_DB_PATH || './facilitator.db',
     logLevel: process.env.LOG_LEVEL || 'info',
+    identityRegistryAddress: process.env.IDENTITY_REGISTRY_ADDRESS || 'erd1qqqqqqqqqqqqqpgqnz68y674m3v7sqsr8m9u89e023cahdsqd8ss4unlsf',
+    validationRegistryAddress: process.env.VALIDATION_REGISTRY_ADDRESS || 'erd1qqqqqqqqqqqqqpgqq6995mrujvvv9v7sqsr8m9u89e023cahdsqd8ss3vj4v7',
 };

@@ -13,6 +13,8 @@ import fs from 'fs';
 import path from 'path';
 import { pino } from 'pino';
 import { RelayerManager } from './services/relayer_manager.js';
+import { Architect } from './services/architect.js';
+import { PrepareRequestSchema } from './domain/schemas.js';
 
 const logger = pino({
     level: config.logLevel,
@@ -40,6 +42,17 @@ export function createServer(dependencies: {
             res.json(result);
         } catch (error: any) {
             logger.warn({ error: error.message, body: req.body }, 'Verify request failed');
+            res.status(400).json({ error: error.message });
+        }
+    });
+
+    app.post('/prepare', async (req: Request, res: Response) => {
+        try {
+            const validated = PrepareRequestSchema.parse(req.body);
+            const result = await Architect.prepare(validated, provider);
+            res.json(result);
+        } catch (error: any) {
+            logger.warn({ error: error.message, body: req.body }, 'Prepare request failed');
             res.status(400).json({ error: error.message });
         }
     });
@@ -119,7 +132,7 @@ async function start() {
     });
     const provider = entrypoint.createNetworkProvider();
 
-    let storage;
+    let storage: ISettlementStorage;
     if (config.storageType === 'sqlite') {
         logger.info({ path: config.sqliteDbPath }, 'Using SQLite storage');
         const sqliteStorage = new SqliteSettlementStorage(config.sqliteDbPath);

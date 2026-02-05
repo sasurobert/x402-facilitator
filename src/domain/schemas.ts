@@ -38,3 +38,10 @@ export const SettleRequestSchema = z.object({
     payload: X402PayloadSchema,
     requirements: X402RequirementsSchema,
 });
+
+export const PrepareRequestSchema = z.object({
+    agentNonce: z.number().int().nonnegative(),
+    serviceId: z.string(),
+    employerAddress: z.string().startsWith('erd1'),
+    jobId: z.string().optional(), // If not provided, one will be generated
+});
