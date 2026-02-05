@@ -1,4 +1,7 @@
 import { ISettlementStorage } from '../domain/storage.js';
+import { pino } from 'pino';
+
+const logger = pino();
 
 export class CleanupService {
     private timer?: NodeJS.Timeout;
@@ -14,11 +17,13 @@ export class CleanupService {
             const now = Math.floor(Date.now() / 1000);
             try {
                 await this.storage.deleteExpired(now);
-                console.log(`[CleanupService] Purged expired records at ${new Date().toISOString()}`);
-            } catch (e) {
-                console.error('[CleanupService] Error during cleanup:', e);
-            }
-        }, this.intervalMs);
+                try {
+                    await this.storage.deleteExpired(now);
+                    logger.info({ time: new Date().toISOString() }, 'Purged expired records');
+                } catch (e: any) {
+                    logger.error({ error: e.message }, 'Error during cleanup');
+                }
+            }, this.intervalMs);
         this.timer.unref(); // Don't keep the process alive just for this
     }
 

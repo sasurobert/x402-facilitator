@@ -3,6 +3,10 @@ import { Address } from '@multiversx/sdk-core';
 import fs from 'fs';
 import path from 'path';
 
+import { pino } from 'pino';
+
+const logger = pino();
+
 export class RelayerManager {
     private signers: Map<number, UserSigner> = new Map();
     private addresses: Map<number, string> = new Map();
@@ -16,9 +20,10 @@ export class RelayerManager {
             try {
                 const pemContent = fs.readFileSync(singlePemPath, 'utf8');
                 this.singleSigner = UserSigner.fromPem(pemContent);
-                console.log(`[RelayerManager] Loaded single relayer: ${this.singleSigner.getAddress().bech32()}`);
-            } catch (e) {
-                console.warn('[RelayerManager] Failed to load single PEM', e);
+                this.singleSigner = UserSigner.fromPem(pemContent);
+                logger.info({ address: this.singleSigner.getAddress().bech32() }, 'Loaded single relayer');
+            } catch (e: any) {
+                logger.warn({ error: e.message }, 'Failed to load single PEM');
             }
         }
     }
@@ -41,9 +46,11 @@ export class RelayerManager {
 
                     this.signers.set(shard, signer);
                     this.addresses.set(shard, address.toBech32());
-                    console.log(`[RelayerManager] Loaded relayer for shard ${shard}: ${address.toBech32()}`);
-                } catch (e) {
-                    console.error(`[RelayerManager] Failed to load wallet ${file}:`, e);
+                    this.signers.set(shard, signer);
+                    this.addresses.set(shard, address.toBech32());
+                    logger.info({ shard, address: address.toBech32() }, 'Loaded relayer for shard');
+                } catch (e: any) {
+                    logger.error({ file, error: e.message }, 'Failed to load wallet');
                 }
             }
         }
