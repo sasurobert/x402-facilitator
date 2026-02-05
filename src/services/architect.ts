@@ -1,4 +1,4 @@
-import { Address, Query, U64Value, BytesValue, AddressValue } from '@multiversx/sdk-core';
+import { Address, Query, U64Value, BytesValue } from '@multiversx/sdk-core';
 import { INetworkProvider } from '../domain/network.js';
 import { config } from '../config.js';
 import { pino } from 'pino';
