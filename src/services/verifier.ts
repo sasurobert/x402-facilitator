@@ -1,30 +1,55 @@
 import { Address, UserVerifier, Transaction, TransactionComputer } from '@multiversx/sdk-core';
 import { X402Payload, X402Requirements } from '../domain/types.js';
 import { pino } from 'pino';
+import { INetworkProvider } from '../domain/network.js';
+import { RelayerManager } from './relayer_manager.js';
+import { BlockchainService } from './blockchain.js';
+import { CONFIG } from '../config.js';
 
 const logger = pino();
 
-import { INetworkProvider } from '../domain/network.js';
-
-import { RelayerManager } from './relayer_manager.js';
-
 export class Verifier {
-    static async verify(payload: X402Payload, requirements: X402Requirements, provider?: INetworkProvider, relayerManager?: RelayerManager): Promise<{ isValid: boolean; payer: string }> {
+    static async verify(
+        payload: X402Payload,
+        requirements: X402Requirements,
+        provider?: INetworkProvider,
+        relayerManager?: RelayerManager,
+        blockchainService?: BlockchainService
+    ): Promise<{ isValid: boolean; payer: string }> {
         logger.info({ sender: payload.sender, receiver: payload.receiver }, 'Verifying payment payload');
 
-        // 1. Static Checks (Time)
+        // 1. Requirement Resolution (v2.1)
+        // If requirements are partial, try to resolve from Identity Registry
+        let resolvedRequirements = { ...requirements };
+        const jobId = this.extractJobId(payload.data);
+
+        if (blockchainService && jobId && !requirements.amount) {
+            try {
+                // For simplicity, we assume agent nonce is part of the job ID or fetched elsewhere
+                // In a real scenario, we'd extract agent nonce from the transaction data or receiver metadata
+                // Since this is a standardization task, we demonstrate the ABI query pattern
+                const agentNonce = this.extractAgentNonce(payload.data);
+                if (agentNonce) {
+                    const price = await blockchainService.getAgentServicePrice(agentNonce, 'default');
+                    resolvedRequirements.amount = price.toString();
+                    resolvedRequirements.asset = 'EGLD';
+                    logger.info({ agentNonce, price: price.toString() }, 'Resolved requirements from Registry');
+                }
+            } catch (error) {
+                logger.warn({ error: (error as Error).message }, 'Failed to resolve requirements from Registry');
+            }
+        }
+
+        // 2. Static Checks (Time)
         const now = Math.floor(Date.now() / 1000);
         if (payload.validAfter && now < payload.validAfter) {
-            logger.warn({ validAfter: payload.validAfter, now }, 'Transaction not yet valid');
             throw new Error('Transaction not yet valid');
         }
         if (payload.validBefore && now > payload.validBefore) {
-            logger.warn({ validBefore: payload.validBefore, now }, 'Transaction expired');
             throw new Error('Transaction expired');
         }
 
-        // 2. Signature Verification
-        // Use Transaction object to reconstruct the message as the SDK does
+        // 3. Signature Verification
         const tx = new Transaction({
             nonce: BigInt(payload.nonce),
             value: BigInt(payload.value),
@@ -39,50 +64,59 @@ export class Verifier {
             relayer: payload.relayer ? Address.newFromBech32(payload.relayer) : undefined
         });
 
-        // Apply signature from payload
         tx.signature = Buffer.from(payload.signature, 'hex');
 
         const computer = new TransactionComputer();
         const message = computer.computeBytesForSigning(tx);
-        const senderAddress = Address.newFromBech32(payload.sender);
-        const verifier = UserVerifier.fromAddress(senderAddress);
+        const verifier = UserVerifier.fromAddress(Address.newFromBech32(payload.sender));
 
-        const isValidSignature = await verifier.verify(message, Buffer.from(payload.signature, 'hex'));
-
+        const isValidSignature = await verifier.verify(message, tx.signature);
         if (!isValidSignature) {
-            logger.error({ sender: payload.sender }, 'Invalid signature detected');
             throw new Error('Invalid signature');
         }
 
-        // 3. Requirements Match
+        // 4. Requirements Match
         const isEsdt = payload.data?.startsWith('MultiESDTNFTTransfer');
-
-        if (!isEsdt && payload.receiver !== requirements.payTo) {
-            logger.error({ payloadReceiver: payload.receiver, requiredPayTo: requirements.payTo }, 'Receiver mismatch');
+        if (!isEsdt && payload.receiver !== resolvedRequirements.payTo) {
             throw new Error('Receiver mismatch');
         }
 
-        if (requirements.asset === 'EGLD') {
-            if (BigInt(payload.value) < BigInt(requirements.amount)) {
-                logger.error({ payloadValue: payload.value, requiredAmount: requirements.amount }, 'Insufficient amount');
+        if (resolvedRequirements.asset === 'EGLD') {
+            if (BigInt(payload.value) < BigInt(resolvedRequirements.amount)) {
                 throw new Error('Insufficient amount');
             }
         } else {
-            // ESDT Logic (MultiESDTNFTTransfer parsing)
-            this.verifyESDT(payload, requirements);
+            this.verifyESDT(payload, resolvedRequirements);
         }
 
-        // 4. Simulation
-        // 4. Simulation
+        // 5. Simulation
         if (provider) {
             await this.simulate(payload, provider, relayerManager);
         }
 
-        logger.info({ sender: payload.sender }, 'Payment payload verified successfully');
         return { isValid: true, payer: payload.sender };
     }
 
-    public static async simulate(payload: X402Payload, provider: INetworkProvider, relayerManager?: RelayerManager) {
+    private static extractJobId(data?: string): string | undefined {
+        if (!data) return undefined;
+        const parts = data.split('@');
+        if (parts.length >= 2 && (parts[0] === 'init_job_with_payment' || parts[0] === 'init_job')) {
+            return Buffer.from(parts[1], 'hex').toString('utf8');
+        }
+        return undefined;
+    }
+
+    private static extractAgentNonce(data?: string): number | undefined {
+        if (!data) return undefined;
+        const parts = data.split('@');
+        // init_job_with_payment@jobId@agentNonce@...
+        if (parts.length >= 3 && parts[0] === 'init_job_with_payment') {
+            return parseInt(parts[2], 16);
+        }
+        return undefined;
+    }
+
+    private static async simulate(payload: X402Payload, provider: INetworkProvider, relayerManager?: RelayerManager) {
         const tx = new Transaction({
             nonce: BigInt(payload.nonce),
             value: BigInt(payload.value),
@@ -97,55 +131,24 @@ export class Verifier {
             relayer: payload.relayer ? Address.newFromBech32(payload.relayer) : undefined,
         });
 
-        // 5. Relayer Signature (if relayed)
         if (payload.relayer && relayerManager) {
             try {
                 const relayerSigner = relayerManager.getSignerForUser(payload.sender);
                 const computer = new TransactionComputer();
                 const bytesToSign = computer.computeBytesForSigning(tx);
                 tx.relayerSignature = Uint8Array.from(await relayerSigner.sign(bytesToSign));
-                logger.info({ relayer: payload.relayer }, 'Applied relayer signature for simulation');
-            } catch (error: unknown) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
-                logger.warn({ error: errorMessage }, 'Failed to apply relayer signature for simulation, proceeding without it');
+            } catch (error) {
+                logger.warn({ error: (error as Error).message }, 'Failed to apply relayer signature for simulation');
             }
         }
 
-        try {
-            logger.info({ tx: JSON.stringify(tx.toPlainObject(), (_, v) => typeof v === 'bigint' ? v.toString() : v) }, 'Facilitator: Simulating transaction...');
-            const simulationResult = await provider.simulateTransaction(tx);
-            logger.info({ simulationResult: JSON.stringify(simulationResult, (_, v) => typeof v === 'bigint' ? v.toString() : v) }, 'Facilitator: Simulation result received');
+        const simulationResult = await provider.simulateTransaction(tx);
+        const execution = simulationResult?.execution || simulationResult?.result?.execution;
 
-            const statusFromStatus = simulationResult?.status?.status;
-            const statusFromRaw = simulationResult?.raw?.status;
-            const execution =
-                simulationResult?.execution || simulationResult?.result?.execution;
-            const resultStatus =
-                statusFromStatus || statusFromRaw || execution?.result;
-
-            if (resultStatus !== 'success') {
-                const message =
-                    execution?.message || simulationResult?.error || 'Unknown error';
-                logger.error({
-                    error: message,
-                    fullResult: JSON.stringify(simulationResult, (_, v) => typeof v === 'bigint' ? v.toString() : v)
-                }, 'Facilitator: Simulation failed');
-                throw new Error(`Simulation failed: ${message}`);
-            }
-
-            logger.info({
-                gasConsumed: execution?.gasConsumed,
-                result: resultStatus
-            }, 'Facilitator: Simulation successful');
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.error({ error: errorMessage }, 'Facilitator: Simulation error caught');
-            throw new Error(`Simulation error: ${errorMessage}`);
+        if ((simulationResult?.status?.status || simulationResult?.raw?.status || execution?.result) !== 'success') {
+            throw new Error(`Simulation failed: ${execution?.message || 'Unknown error'}`);
         }
     }
-
-    // private static serializePayload removed - using Transaction.serializeForSigning() instead
-
 
     private static verifyESDT(payload: X402Payload, requirements: X402Requirements) {
         if (!payload.data?.startsWith('MultiESDTNFTTransfer')) {
@@ -157,34 +160,12 @@ export class Verifier {
             throw new Error('Invalid MultiESDTNFTTransfer data');
         }
 
-        const receiverHex = parts[1];
-        const tokenHex = parts[3];
-        const amountHex = parts[5];
+        const actualReceiver = Address.fromHex(parts[1]).toBech32();
+        const actualToken = Buffer.from(parts[3], 'hex').toString();
+        const actualAmount = BigInt('0x' + parts[5]);
 
-        try {
-            const actualReceiverAddress = new Address(receiverHex);
-            const actualReceiver = actualReceiverAddress.toBech32();
-            const actualToken = Buffer.from(tokenHex, 'hex').toString();
-            const actualAmount = BigInt('0x' + amountHex);
-
-            if (actualReceiver !== requirements.payTo) {
-                logger.error({ actualReceiver, requiredPayTo: requirements.payTo }, 'ESDT receiver mismatch');
-                throw new Error('ESDT receiver mismatch');
-            }
-
-            if (actualToken !== requirements.asset) {
-                logger.error({ actualToken, requiredAsset: requirements.asset }, 'ESDT token mismatch');
-                throw new Error('ESDT token mismatch');
-            }
-
-            if (actualAmount < BigInt(requirements.amount)) {
-                logger.error({ actualAmount: actualAmount.toString(), requiredAmount: requirements.amount }, 'Insufficient ESDT amount');
-                throw new Error('Insufficient ESDT amount');
-            }
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            logger.error({ error: errorMessage, receiverHex }, 'Error in verifyESDT Address creation');
-            throw error;
-        }
+        if (actualReceiver !== requirements.payTo) throw new Error('ESDT receiver mismatch');
+        if (actualToken !== requirements.asset) throw new Error('ESDT token mismatch');
+        if (actualAmount < BigInt(requirements.amount)) throw new Error('Insufficient ESDT amount');
     }
 }
