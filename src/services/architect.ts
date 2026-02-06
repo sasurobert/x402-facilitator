@@ -106,6 +106,8 @@ export class Architect {
         const owner = new Address(ownerBuffer).toBech32();
         const price = BigInt('0x' + priceBuffer.toString('hex')).toString();
 
+        logger.info({ owner, price }, 'Facilitator: Resolved agent details');
+
         return { owner, price };
     }
 

@@ -112,9 +112,9 @@ export class Verifier {
         }
 
         try {
-            logger.info({ tx: JSON.stringify(tx.toPlainObject()) }, 'Facilitator: Simulating transaction...');
+            logger.info({ tx: JSON.stringify(tx.toPlainObject(), (_, v) => typeof v === 'bigint' ? v.toString() : v) }, 'Facilitator: Simulating transaction...');
             const simulationResult = await provider.simulateTransaction(tx);
-            logger.info({ simulationResult: JSON.stringify(simulationResult) }, 'Facilitator: Simulation result received');
+            logger.info({ simulationResult: JSON.stringify(simulationResult, (_, v) => typeof v === 'bigint' ? v.toString() : v) }, 'Facilitator: Simulation result received');
 
             const statusFromStatus = simulationResult?.status?.status;
             const statusFromRaw = simulationResult?.raw?.status;
@@ -128,7 +128,7 @@ export class Verifier {
                     execution?.message || simulationResult?.error || 'Unknown error';
                 logger.error({
                     error: message,
-                    fullResult: JSON.stringify(simulationResult)
+                    fullResult: JSON.stringify(simulationResult, (_, v) => typeof v === 'bigint' ? v.toString() : v)
                 }, 'Facilitator: Simulation failed');
                 throw new Error(`Simulation failed: ${message}`);
             }
