@@ -123,7 +123,7 @@ export class Settler {
             gasLimit: BigInt(payload.gasLimit), // Use signed gas limit exactly
             data: payload.data ? Uint8Array.from(Buffer.from(payload.data)) : undefined,
             chainID: payload.chainID,
-            version: payload.version >= 2 ? payload.version : 2, // Ensure at least V2
+            version: payload.version,
             signature: Uint8Array.from(Buffer.from(payload.signature, 'hex')),
         });
 

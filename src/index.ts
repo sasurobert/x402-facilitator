@@ -131,10 +131,7 @@ export function createServer(dependencies: {
 }
 
 async function start() {
-    const entrypoint = new DevnetEntrypoint({
-        url: config.networkProvider,
-    });
-    const provider = entrypoint.createNetworkProvider();
+    const provider = new ProxyNetworkProvider(config.networkProvider);
 
     let storage: ISettlementStorage;
     if (config.storageType === 'sqlite') {
