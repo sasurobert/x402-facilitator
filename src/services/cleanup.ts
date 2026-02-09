@@ -18,8 +18,9 @@ export class CleanupService {
             try {
                 await this.storage.deleteExpired(now);
                 logger.info({ time: new Date().toISOString() }, 'Purged expired records');
-            } catch (e: any) {
-                logger.error({ error: e.message }, 'Error during cleanup');
+            } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : String(e);
+                logger.error({ error: message }, 'Error during cleanup');
             }
         }, this.intervalMs);
         this.timer.unref(); // Don't keep the process alive just for this

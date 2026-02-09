@@ -65,10 +65,11 @@ export class Settler {
             logger.info({ settlementId: id, txHash }, 'Settlement completed successfully');
             return { success: true, txHash };
 
-        } catch (error: any) {
-            logger.error({ settlementId: id, error: error.message }, 'Settlement failed');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.error({ settlementId: id, error: message }, 'Settlement failed');
             await this.storage.updateStatus(id, 'failed');
-            throw new Error(`Settlement failed: ${error.message}`);
+            throw new Error(`Settlement failed: ${message}`);
         }
     }
 
@@ -97,13 +98,20 @@ export class Settler {
     private async sendRelayedV3(payload: X402Payload): Promise<string> {
         if (!this.relayerManager) throw new Error('Relayer manager not configured');
 
+        // VALIDATION: In Relayed V3, the sender MUST set the relayer address BEFORE signing.
+        // The relayer field is mandatory — without it the reconstructed tx won't match the sender's signature.
+        if (!payload.relayer) {
+            throw new Error('Relayed V3 requires payload.relayer to be set by the sender before signing.');
+        }
+
+        if (payload.version < 2) {
+            throw new Error('Relayed V3 requires transaction version >= 2.');
+        }
+
         // Select correct relayer for this sender (shard aware)
         const relayerSigner = this.relayerManager.getSignerForUser(payload.sender);
         const expectedRelayerAddress = relayerSigner.getAddress().bech32();
-
-        // VALIDATION: In Relayed V3, the sender MUST set the relayer address BEFORE signing.
-        // We use the relayer address from the payload to ensure we don't invalidate the signature.
-        const relayerAddress = payload.relayer ? Address.newFromBech32(payload.relayer) : Address.newFromBech32(expectedRelayerAddress);
+        const relayerAddress = Address.newFromBech32(payload.relayer);
 
         if (relayerAddress.toBech32() !== expectedRelayerAddress) {
             logger.warn({
@@ -119,18 +127,55 @@ export class Settler {
             receiver: Address.newFromBech32(payload.receiver),
             sender: Address.newFromBech32(payload.sender),
             relayer: relayerAddress,
-            gasPrice: BigInt(payload.gasPrice), // Note: Version 2 doesn't always use custom gasPrice but inherits
-            gasLimit: BigInt(payload.gasLimit), // Use signed gas limit exactly
+            gasPrice: BigInt(payload.gasPrice),
+            gasLimit: BigInt(payload.gasLimit),
             data: payload.data ? Uint8Array.from(Buffer.from(payload.data)) : undefined,
             chainID: payload.chainID,
             version: payload.version,
             signature: Uint8Array.from(Buffer.from(payload.signature, 'hex')),
         });
 
-        // Relayer signs as well
+        // Relayer ONLY adds relayerSignature — no other tx mutations allowed
         const bytesToSign = this.transactionComputer.computeBytesForSigning(tx);
         tx.relayerSignature = Uint8Array.from(await relayerSigner.sign(bytesToSign));
 
+        // Pre-broadcast simulation (critical for catching errors before on-chain)
+        if (process.env.SKIP_SIMULATION !== 'true') {
+            try {
+                const simulationResult = await this.provider.simulateTransaction(tx);
+                logger.debug({
+                    simulationResult: JSON.stringify(simulationResult, (_, v) =>
+                        typeof v === 'bigint' ? v.toString() : v)
+                }, 'Relayed V3 simulation result');
+
+                // Robust parser: handle both API and Proxy/Gateway response structures
+                const statusFromStatus = simulationResult?.status?.status;
+                const statusFromRaw = simulationResult?.raw?.status;
+                const execution = simulationResult?.execution || simulationResult?.result?.execution;
+                const receiverShardStatus = simulationResult?.raw?.receiverShard?.status;
+                const senderShardStatus = simulationResult?.raw?.senderShard?.status;
+                const shardSuccess = (receiverShardStatus === 'success') &&
+                    (!senderShardStatus || senderShardStatus === 'success');
+
+                const resultStatus = statusFromStatus || statusFromRaw ||
+                    execution?.result || (shardSuccess ? 'success' : '');
+
+                if (resultStatus !== 'success') {
+                    const message = execution?.message || simulationResult?.error || 'Unknown simulation error';
+                    logger.error({ message }, 'Relayed V3 simulation failed');
+                    throw new Error(`On-chain simulation failed: ${message}`);
+                }
+                logger.info('Relayed V3 simulation successful');
+            } catch (simError: unknown) {
+                const message = simError instanceof Error ? simError.message : String(simError);
+                logger.error({ error: message }, 'Relayed V3 simulation error');
+                throw simError;
+            }
+        } else {
+            logger.warn('Simulation SKIPPED by SKIP_SIMULATION config');
+        }
+
+        // Broadcast
         const txHash = await this.provider.sendTransaction(tx);
         return txHash;
     }

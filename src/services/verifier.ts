@@ -4,7 +4,6 @@ import { pino } from 'pino';
 import { INetworkProvider } from '../domain/network.js';
 import { RelayerManager } from './relayer_manager.js';
 import { BlockchainService } from './blockchain.js';
-import { config as CONFIG } from '../config.js';
 
 const logger = pino();
 

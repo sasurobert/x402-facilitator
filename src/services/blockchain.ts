@@ -1,5 +1,4 @@
 import { Abi, Address, DevnetEntrypoint, MainnetEntrypoint, TestnetEntrypoint, SmartContractController } from '@multiversx/sdk-core';
-import { pino } from 'pino';
 import identityAbiJson from '../abis/identity-registry.abi.json' with { type: 'json' };
 
 

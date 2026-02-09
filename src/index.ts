@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import cors from 'cors';
 import { Verifier } from './services/verifier.js';
 import { Settler } from './services/settler.js';
 import { CleanupService } from './services/cleanup.js';
@@ -29,6 +30,7 @@ export function createServer(dependencies: {
 }) {
     const { provider, storage, relayerManager } = dependencies;
     const app = express();
+    app.use(cors());
     app.use(express.json());
 
     const settler = new Settler(storage, provider, relayerManager);
@@ -44,20 +46,22 @@ export function createServer(dependencies: {
             const validated = VerifyRequestSchema.parse(req.body);
             const result = await Verifier.verify(validated.payload, validated.requirements, provider, relayerManager);
             res.json(result);
-        } catch (error: any) {
-            logger.warn({ error: error.message, body: req.body }, 'Verify request failed');
-            res.status(400).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn({ error: message, body: req.body }, 'Verify request failed');
+            res.status(400).json({ error: message });
         }
     });
 
     app.post('/prepare', async (req: Request, res: Response) => {
         try {
             const validated = PrepareRequestSchema.parse(req.body);
-            const result = await Architect.prepare(validated, provider);
+            const result = await Architect.prepare(validated);
             res.json(result);
-        } catch (error: any) {
-            logger.warn({ error: error.message, body: req.body }, 'Prepare request failed');
-            res.status(400).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn({ error: message, body: req.body }, 'Prepare request failed');
+            res.status(400).json({ error: message });
         }
     });
 
@@ -67,9 +71,10 @@ export function createServer(dependencies: {
             await Verifier.verify(validated.payload, validated.requirements, provider, relayerManager);
             const result = await settler.settle(validated.payload);
             res.json(result);
-        } catch (error: any) {
-            logger.warn({ error: error.message, body: req.body }, 'Settle request failed');
-            res.status(400).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn({ error: message, body: req.body }, 'Settle request failed');
+            res.status(400).json({ error: message });
         }
     });
 
@@ -86,9 +91,10 @@ export function createServer(dependencies: {
             }
             const relayerAddress = relayerManager.getRelayerAddressForUser(userAddress);
             res.json({ relayerAddress });
-        } catch (error: any) {
-            logger.warn({ error: error.message, userAddress }, 'Failed to get relayer address');
-            res.status(404).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.warn({ error: message, userAddress }, 'Failed to get relayer address');
+            res.status(404).json({ error: message });
         }
     });
 
@@ -121,9 +127,10 @@ export function createServer(dependencies: {
             }
 
             res.json(events);
-        } catch (error: any) {
-            logger.error({ error: error.message }, 'Events poll failed');
-            res.status(500).json({ error: error.message });
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            logger.error({ error: message }, 'Events poll failed');
+            res.status(500).json({ error: message });
         }
     });
 

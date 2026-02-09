@@ -21,8 +21,9 @@ export class RelayerManager {
                 const pemContent = fs.readFileSync(singlePemPath, 'utf8');
                 this.singleSigner = UserSigner.fromPem(pemContent);
                 logger.info({ address: this.singleSigner.getAddress().bech32() }, 'Loaded single relayer');
-            } catch (e: any) {
-                logger.warn({ error: e.message }, 'Failed to load single PEM');
+            } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : String(e);
+                logger.warn({ error: message }, 'Failed to load single PEM');
             }
         }
     }
@@ -46,8 +47,9 @@ export class RelayerManager {
                     this.signers.set(shard, signer);
                     this.addresses.set(shard, address.toBech32());
                     logger.info({ shard, address: address.toBech32() }, 'Loaded relayer for shard');
-                } catch (e: any) {
-                    logger.error({ file, error: e.message }, 'Failed to load wallet');
+                } catch (e: unknown) {
+                    const message = e instanceof Error ? e.message : String(e);
+                    logger.error({ file, error: message }, 'Failed to load wallet');
                 }
             }
         }

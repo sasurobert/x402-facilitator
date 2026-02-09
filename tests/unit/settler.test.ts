@@ -45,6 +45,7 @@ describe('Settler Service', () => {
 
         mockProvider = {
             sendTransaction: vi.fn().mockResolvedValue('tx-hash'),
+            simulateTransaction: vi.fn().mockResolvedValue({ status: { status: 'success' } }),
         };
 
         mockRelayerManager = {
@@ -110,12 +111,13 @@ describe('Settler Service', () => {
 
         vi.mocked(mockStorage.get).mockResolvedValue(null);
 
-        // MUST have relayer field to trigger relayed path
-        const payloadWithRelayer = { ...payload, relayer: relayerAddressBech32 };
+        // MUST have relayer field AND version >= 2 to trigger relayed path
+        const payloadWithRelayer = { ...payload, relayer: relayerAddressBech32, version: 2 };
 
         const result = await settler.settle(payloadWithRelayer);
         expect(result.success).toBe(true);
         expect(mockProvider.sendTransaction).toHaveBeenCalled();
+        expect(mockProvider.simulateTransaction).toHaveBeenCalled();
         expect(mockRelayerManager.getSignerForUser).toHaveBeenCalledWith(payload.sender);
 
         const sentTx = vi.mocked(mockProvider.sendTransaction).mock.calls[0][0];
@@ -157,7 +159,7 @@ describe('Settler Service', () => {
         settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
         vi.mocked(mockStorage.get).mockResolvedValue(null);
 
-        const payloadWithRelayer = { ...payload, relayer: relayerAddressBech32 };
+        const payloadWithRelayer = { ...payload, relayer: relayerAddressBech32, version: 2 };
         const result = await settler.settle(payloadWithRelayer);
         expect(result.success).toBe(true);
     });
@@ -174,7 +176,58 @@ describe('Settler Service', () => {
         vi.mocked(mockRelayerManager.getSignerForUser).mockReturnValue(mockRelayerSigner);
         settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
 
-        const payloadWithWrongRelayer = { ...payload, relayer: bobBech32 }; // Bob is not the relayer
+        const payloadWithWrongRelayer = { ...payload, relayer: bobBech32, version: 2 };
         await expect(settler.settle(payloadWithWrongRelayer)).rejects.toThrow('Invalid relayer address');
+    });
+
+    it('should fail Relayed V3 if payload.relayer is missing', async () => {
+        settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
+        vi.mocked(mockStorage.get).mockResolvedValue(null);
+
+        // payload has relayerManager but relayer field is set AND version < 2
+        const payloadNoRelayer = { ...payload, version: 2 };
+        // No relayer field — should go direct path since condition is relayerManager && payload.relayer
+        const result = await settler.settle(payloadNoRelayer);
+        expect(result.success).toBe(true);
+        expect(mockRelayerManager.getSignerForUser).not.toHaveBeenCalled();
+    });
+
+    it('should fail Relayed V3 if version < 2', async () => {
+        const relayerSecret = new UserSecretKey(Uint8Array.from(Buffer.alloc(32, 3)));
+        const relayerAddressBech32 = relayerSecret.generatePublicKey().toAddress().toBech32();
+
+        const mockRelayerSigner = {
+            getAddress: () => ({ bech32: () => relayerAddressBech32 }),
+            sign: vi.fn()
+        };
+
+        vi.mocked(mockRelayerManager.getSignerForUser).mockReturnValue(mockRelayerSigner);
+        settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
+        vi.mocked(mockStorage.get).mockResolvedValue(null);
+
+        const payloadV1 = { ...payload, relayer: relayerAddressBech32, version: 1 };
+        await expect(settler.settle(payloadV1)).rejects.toThrow('version >= 2');
+    });
+
+    it('should fail Relayed V3 if simulation fails', async () => {
+        const relayerSecret = new UserSecretKey(Uint8Array.from(Buffer.alloc(32, 3)));
+        const relayerAddressBech32 = relayerSecret.generatePublicKey().toAddress().toBech32();
+
+        const mockRelayerSigner = {
+            getAddress: () => ({ bech32: () => relayerAddressBech32 }),
+            sign: vi.fn().mockResolvedValue(Uint8Array.from(Buffer.from('relayer-sig')))
+        };
+
+        vi.mocked(mockRelayerManager.getSignerForUser).mockReturnValue(mockRelayerSigner);
+        mockProvider.simulateTransaction = vi.fn().mockResolvedValue({
+            status: { status: 'fail' },
+            execution: { message: 'insufficient funds' }
+        });
+        settler = new Settler(mockStorage, mockProvider, mockRelayerManager);
+        vi.mocked(mockStorage.get).mockResolvedValue(null);
+
+        const payloadWithRelayer = { ...payload, relayer: relayerAddressBech32, version: 2 };
+        await expect(settler.settle(payloadWithRelayer)).rejects.toThrow('simulation failed');
+        expect(mockProvider.sendTransaction).not.toHaveBeenCalled();
     });
 });
