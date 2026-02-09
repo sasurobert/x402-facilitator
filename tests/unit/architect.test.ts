@@ -7,22 +7,24 @@ describe('Architect Service', () => {
         vi.clearAllMocks();
     });
 
-    it('should correctly encode data for init_job_with_payment using ABI', async () => {
+    it('should correctly encode data for init_job using ABI', async () => {
         const jobId = 'test-job-id';
         const nonce = 12345;
-        const serviceId = 'test-service';
+        const serviceId = '1';
         const validationAddr = new Address(Buffer.alloc(32));
 
         // Access private method for testing encoding
         const data = await (Architect as any).constructDataField(validationAddr, jobId, nonce, serviceId);
 
-        // Expected parts: init_job_with_payment, jobId (hex), nonce (hex, 8 bytes big endian), serviceId (hex)
-        expect(data).toContain('init_job_with_payment');
+        // Expected parts: init_job, jobId (hex), nonce (hex), serviceId (hex)
+        expect(data).toContain('init_job');
         expect(data).toContain(Buffer.from(jobId).toString('hex'));
 
         // Nonce 12345 in hex is 3039.
         const expectedNonceHex = '3039';
         expect(data).toContain(expectedNonceHex);
-        expect(data).toContain(Buffer.from(serviceId).toString('hex'));
+
+        // Service ID "1" -> 01
+        expect(data).toContain('01');
     });
 });

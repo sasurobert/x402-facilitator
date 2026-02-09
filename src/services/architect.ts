@@ -147,11 +147,11 @@ export class Architect {
             new Address(Buffer.alloc(32)), // Placeholder sender
             {
                 contract: validationAddr,
-                function: 'init_job_with_payment',
+                function: 'init_job',
                 arguments: [
                     Buffer.from(jobId),
                     BigInt(nonce),
-                    Buffer.from(serviceId),
+                    Number(serviceId),
                 ],
                 gasLimit: 0n,
             }
