@@ -15,20 +15,22 @@ The x402 Facilitator acts as an intermediary that validates off-chain payment in
 - **Flexible Settlement**: Supports direct broadcasting and Relayed V3 transactions.
 - **Background Cleanup**: Automatically purges expired settlement records from local storage.
 
-## Getting Started
-
-### Prerequisites
-
-- Node.js 20+
-- pnpm
-
-### Installation
+## Quick Start
 
 ```bash
 git clone https://github.com/sasurobert/x402-facilitator.git
 cd x402-facilitator
-pnpm install
+chmod +x setup.sh && ./setup.sh
 ```
+
+The setup script installs pnpm (if missing), dependencies, creates a default `.env`, builds, and runs tests.
+
+### Prerequisites
+
+| Tool | Version | Required |
+|------|---------|----------|
+| Node.js | v20+ | Yes |
+| pnpm | latest | Auto-installed by setup.sh |
 
 ### Configuration
 
