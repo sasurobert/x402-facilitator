@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { Verifier } from './services/verifier.js';
 import { Settler } from './services/settler.js';
 import { CleanupService } from './services/cleanup.js';
@@ -30,6 +32,13 @@ export function createServer(dependencies: {
 }) {
     const { provider, storage, relayerManager } = dependencies;
     const app = express();
+    app.use(helmet());
+    app.use(rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 100,
+        standardHeaders: true,
+        legacyHeaders: false,
+    }));
     app.use(cors());
     app.use(express.json());
 
