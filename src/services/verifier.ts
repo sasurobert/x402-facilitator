@@ -57,7 +57,7 @@ export class Verifier {
             sender: Address.newFromBech32(payload.sender),
             gasPrice: BigInt(payload.gasPrice),
             gasLimit: BigInt(payload.gasLimit),
-            data: payload.data ? Buffer.from(payload.data) : undefined,
+            data: payload.data ? Buffer.from(this.decodeDataField(payload.data)) : undefined,
             chainID: payload.chainID,
             version: payload.version,
             options: payload.options,
@@ -76,7 +76,9 @@ export class Verifier {
         }
 
         // 4. Requirements Match
-        const isEsdt = payload.data?.startsWith('MultiESDTNFTTransfer');
+        // Data field may be base64-encoded (from SDK toPlainObject) or plain text (from tests/direct construction)
+        const decodedData = payload.data ? this.decodeDataField(payload.data) : '';
+        const isEsdt = decodedData.startsWith('ESDTTransfer') || decodedData.startsWith('MultiESDTNFTTransfer');
         if (!isEsdt && payload.receiver !== resolvedRequirements.payTo) {
             throw new Error('Receiver mismatch');
         }
@@ -86,7 +88,7 @@ export class Verifier {
                 throw new Error('Insufficient amount');
             }
         } else {
-            this.verifyESDT(payload, resolvedRequirements);
+            this.verifyESDT(decodedData, resolvedRequirements);
         }
 
         // 5. Simulation
@@ -129,7 +131,7 @@ export class Verifier {
             sender: Address.newFromBech32(payload.sender),
             gasPrice: BigInt(payload.gasPrice),
             gasLimit: BigInt(payload.gasLimit),
-            data: payload.data ? Buffer.from(payload.data) : undefined,
+            data: payload.data ? Buffer.from(this.decodeDataField(payload.data)) : undefined,
             chainID: payload.chainID,
             version: payload.version,
             signature: Buffer.from(payload.signature, 'hex'),
@@ -155,23 +157,48 @@ export class Verifier {
             throw new Error(`Simulation failed: ${errorMessage}`);
         }
     }
+    /**
+     * Decode the transaction data field. The SDK's toPlainObject() base64-encodes
+     * the data, but tests/direct construction may use plain text.
+     */
+    private static decodeDataField(data: string): string {
+        // If the data already starts with a known MultiversX function name, it's plain text
+        const knownPrefixes = ['ESDTTransfer', 'MultiESDTNFTTransfer', 'init_job', 'DCTTransfer'];
+        for (const prefix of knownPrefixes) {
+            if (data.startsWith(prefix)) return data;
+        }
+        // Otherwise, try base64 decode
+        const decoded = Buffer.from(data, 'base64').toString('utf8');
+        return decoded;
+    }
 
-    private static verifyESDT(payload: X402Payload, requirements: X402Requirements) {
-        if (!payload.data?.startsWith('MultiESDTNFTTransfer')) {
+    private static verifyESDT(decodedData: string, requirements: X402Requirements) {
+        const parts = decodedData.split('@');
+
+        if (parts[0] === 'ESDTTransfer') {
+            // ESDTTransfer@tokenIdHex@amountHex
+            if (parts.length < 3) {
+                throw new Error('Invalid ESDTTransfer data');
+            }
+            const actualToken = Buffer.from(parts[1], 'hex').toString();
+            const actualAmount = BigInt('0x' + parts[2]);
+
+            if (actualToken !== requirements.asset) throw new Error('ESDT token mismatch');
+            if (actualAmount < BigInt(requirements.amount)) throw new Error('Insufficient ESDT amount');
+        } else if (parts[0] === 'MultiESDTNFTTransfer') {
+            // MultiESDTNFTTransfer@receiverHex@numTransfers@tokenIdHex@nonceHex@amountHex
+            if (parts.length < 6) {
+                throw new Error('Invalid MultiESDTNFTTransfer data');
+            }
+            const actualReceiver = Address.newFromHex(parts[1]).toBech32();
+            const actualToken = Buffer.from(parts[3], 'hex').toString();
+            const actualAmount = BigInt('0x' + parts[5]);
+
+            if (actualReceiver !== requirements.payTo) throw new Error('ESDT receiver mismatch');
+            if (actualToken !== requirements.asset) throw new Error('ESDT token mismatch');
+            if (actualAmount < BigInt(requirements.amount)) throw new Error('Insufficient ESDT amount');
+        } else {
             throw new Error('Not an ESDT transfer');
         }
-
-        const parts = payload.data.split('@');
-        if (parts.length < 6) {
-            throw new Error('Invalid MultiESDTNFTTransfer data');
-        }
-
-        const actualReceiver = Address.newFromHex(parts[1]).toBech32();
-        const actualToken = Buffer.from(parts[3], 'hex').toString();
-        const actualAmount = BigInt('0x' + parts[5]);
-
-        if (actualReceiver !== requirements.payTo) throw new Error('ESDT receiver mismatch');
-        if (actualToken !== requirements.asset) throw new Error('ESDT token mismatch');
-        if (actualAmount < BigInt(requirements.amount)) throw new Error('Insufficient ESDT amount');
     }
 }

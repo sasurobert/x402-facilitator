@@ -38,7 +38,7 @@ export function createServer(dependencies: {
         standardHeaders: true,
         legacyHeaders: false,
     }));
-    app.use(cors());
+    app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
     app.use(express.json());
 
     const settler = new Settler(storage, provider, relayerManager);
@@ -86,9 +86,6 @@ export function createServer(dependencies: {
         }
     });
 
-
-
-
     // Relayer Address Endpoint (for Caching support)
     app.get('/relayer/address/:userAddress', (req: Request, res: Response) => {
         const { userAddress } = req.params;
@@ -111,25 +108,17 @@ export function createServer(dependencies: {
         try {
             const unread = await storage.getUnread();
 
-            // Transform to Moltbot schema if needed, but for now return raw records
             const events = unread.map((r: ISettlementRecord) => ({
                 amount: r.amount || '0',
                 token: r.token || 'EGLD',
-                // For MVP, we return the record which contains the raw payload?
-                // SettlementStorage record structure is limited (id, signature, payer, status).
-                // We might need to store the FULL payload to be useful?
-                // For now, let's map what we have.
                 meta: {
-                    jobId: r.jobId || r.id, // Prefer extracted JobID, fallback to hash
-                    payload: r.id, // Or signature? Moltbot uses this payload string.
+                    jobId: r.jobId || r.id,
+                    payload: r.id,
                     sender: r.payer,
                     txHash: r.txHash
-                    // We don't have the original 'data' field in ISettlementRecord unless we add it.
-                    // But Moltbot just needs a trigger.
                 }
             }));
 
-            // Auto-mark as read if requested (consuming the queue)
             if (req.query.unread === 'true' && unread.length > 0) {
                 await storage.markAsRead(unread.map((r: ISettlementRecord) => r.id));
             }

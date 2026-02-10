@@ -34,12 +34,13 @@ The setup script installs pnpm (if missing), dependencies, creates a default `.e
 
 ### Configuration
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory (see `.env.example` for all variables):
 
 ```env
 PORT=3000
 NETWORK_PROVIDER=https://devnet-api.multiversx.com
-NETWORK_PROVIDER=https://devnet-api.multiversx.com
+STORAGE_TYPE=sqlite
+SQLITE_DB_PATH=./facilitator.db
 # Relayer Configuration
 RELAYER_WALLETS_DIR=./wallets/ # Directory containing shardX.pem files
 # RELAYER_PEM_PATH=./relayer.pem # Legacy single-shard support
@@ -49,11 +50,11 @@ RELAYER_WALLETS_DIR=./wallets/ # Directory containing shardX.pem files
 
 ```bash
 # Development mode
-pnpm dev
+npm run dev
 
 # Build and start
-pnpm build
-pnpm start
+npm run build
+npm start
 ```
 
 ## API Reference

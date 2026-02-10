@@ -86,7 +86,7 @@ export class Settler {
             sender: Address.newFromBech32(payload.sender),
             gasPrice: BigInt(payload.gasPrice),
             gasLimit: BigInt(payload.gasLimit),
-            data: payload.data ? Uint8Array.from(Buffer.from(payload.data)) : undefined,
+            data: payload.data ? Uint8Array.from(Buffer.from(this.decodeDataField(payload.data))) : undefined,
             chainID: payload.chainID,
             version: payload.version,
             signature: Uint8Array.from(Buffer.from(payload.signature, 'hex')),
@@ -130,7 +130,7 @@ export class Settler {
             relayer: relayerAddress,
             gasPrice: BigInt(payload.gasPrice),
             gasLimit: BigInt(payload.gasLimit),
-            data: payload.data ? Uint8Array.from(Buffer.from(payload.data)) : new Uint8Array(0),
+            data: payload.data ? Uint8Array.from(Buffer.from(this.decodeDataField(payload.data))) : new Uint8Array(0),
             chainID: payload.chainID,
             version: payload.version,
             options: payload.options,
@@ -169,6 +169,18 @@ export class Settler {
         // Broadcast
         const txHash = await this.provider.sendTransaction(tx);
         return txHash;
+    }
+
+    /**
+     * Decode the transaction data field. The SDK's toPlainObject() base64-encodes
+     * the data, but tests/direct construction may use plain text.
+     */
+    private decodeDataField(data: string): string {
+        const knownPrefixes = ['ESDTTransfer', 'MultiESDTNFTTransfer', 'init_job', 'DCTTransfer'];
+        for (const prefix of knownPrefixes) {
+            if (data.startsWith(prefix)) return data;
+        }
+        return Buffer.from(data, 'base64').toString('utf8');
     }
 
     private extractJobId(data?: string): string | undefined {

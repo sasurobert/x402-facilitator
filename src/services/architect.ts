@@ -45,7 +45,7 @@ export class Architect {
         const validationPath = path.join(__dirname, '../abis/validation-registry.abi.json');
 
         // Patch ABI types that sdk-core TypeMapper doesn't recognize
-        const patchAbiTypes = (abiJson: any) => {
+        const patchAbiTypes = (abiJson: Record<string, unknown>) => {
             const raw = JSON.stringify(abiJson);
             return JSON.parse(
                 raw
