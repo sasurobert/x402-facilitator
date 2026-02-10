@@ -66,13 +66,13 @@ export class BlockchainService {
         return results[0] as bigint;
     }
 
-    async getAgentServiceConfig(nonce: number, serviceId: string): Promise<AgentServiceConfig> {
+    async getAgentServiceConfig(nonce: number, serviceId: string): Promise<AgentServiceConfig | null> {
         const results = await this.controller.query({
             contract: Address.newFromBech32(this.registryAddress),
             function: 'get_agent_service_config',
             arguments: [nonce, Buffer.from(serviceId)],
         });
 
-        return results[0] as AgentServiceConfig;
+        return (results[0] as AgentServiceConfig) ?? null;
     }
 }
