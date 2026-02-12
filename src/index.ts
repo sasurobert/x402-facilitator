@@ -15,7 +15,7 @@ import fs from 'fs';
 import path from 'path';
 import { pino } from 'pino';
 import { RelayerManager } from './services/relayer_manager.js';
-import { Architect } from './services/architect.js';
+import { Architect, AgentNotFoundError } from './services/architect.js';
 import { PrepareRequestSchema } from './domain/schemas.js';
 
 const logger = pino({
@@ -68,8 +68,9 @@ export function createServer(dependencies: {
             res.json(result);
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : String(error);
+            const status = error instanceof AgentNotFoundError ? 404 : 400;
             logger.warn({ error: message, body: req.body }, 'Prepare request failed');
-            res.status(400).json({ error: message });
+            res.status(status).json({ error: message });
         }
     });
 

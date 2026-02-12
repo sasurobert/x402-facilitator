@@ -32,6 +32,13 @@ interface AgentServiceConfig {
     price: bigint;
 }
 
+export class AgentNotFoundError extends Error {
+    constructor(nonce: number) {
+        super(`Agent with nonce ${nonce} not found in registry`);
+        this.name = 'AgentNotFoundError';
+    }
+}
+
 export class Architect {
     private static identityAbi: Abi;
     private static validationAbi: Abi;
@@ -107,21 +114,39 @@ export class Architect {
         registryAddr: Address,
     ): Promise<{ owner: string; price: string; token: string; pnonce: number }> {
         // Query IdentityRegistry for owner using SmartContractController (v15 pattern)
-        const ownerResults = await this.identityController.query({
-            contract: registryAddr,
-            function: 'get_agent_owner',
-            arguments: [nonce],
-        });
-
-        // Query IdentityRegistry for full service configuration
-        const configResults = await this.identityController.query({
-            contract: registryAddr,
-            function: 'get_agent_service_config',
-            arguments: [nonce, Buffer.from(serviceId)],
-        });
+        let ownerResults;
+        try {
+            ownerResults = await this.identityController.query({
+                contract: registryAddr,
+                function: 'get_agent_owner',
+                arguments: [nonce],
+            });
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (msg.includes('Agent not found') || msg.includes('storage decode error')) {
+                throw new AgentNotFoundError(nonce);
+            }
+            throw err;
+        }
 
         const owner: string = (ownerResults[0] as Address).toBech32();
-        const serviceConfig = configResults[0] as AgentServiceConfig | undefined;
+        if (!owner) {
+            throw new AgentNotFoundError(nonce);
+        }
+
+        // Query IdentityRegistry for full service configuration (may be absent)
+        let serviceConfig: AgentServiceConfig | undefined;
+        try {
+            const configResults = await this.identityController.query({
+                contract: registryAddr,
+                function: 'get_agent_service_config',
+                arguments: [nonce, Buffer.from(serviceId)],
+            });
+            serviceConfig = configResults[0] as AgentServiceConfig | undefined;
+        } catch {
+            // Service config not found — use defaults (price=0, EGLD)
+            serviceConfig = undefined;
+        }
 
         const price = serviceConfig?.price?.toString() ?? '0';
 
@@ -130,10 +155,6 @@ export class Architect {
             token = serviceConfig.token.identifier.toString();
         }
         const pnonce = Number(serviceConfig?.pnonce ?? 0);
-
-        if (!owner) {
-            throw new Error(`Failed to fetch agent owner from registry for nonce ${nonce}`);
-        }
 
         logger.info({ owner, price, token, pnonce }, 'Facilitator: Resolved agent details and service config');
 
