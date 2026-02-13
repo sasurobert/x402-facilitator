@@ -20,6 +20,18 @@ export class Settler {
         private relayerManager?: RelayerManager
     ) { }
 
+    async checkIdempotency(payload: X402Payload): Promise<{ success: boolean; txHash?: string } | null> {
+        const id = this.calculateId(payload);
+        const existing = await this.storage.get(id);
+
+        if (existing && existing.status === 'completed') {
+            logger.info({ settlementId: id, txHash: existing.txHash }, 'Idempotency hit: returning cached settlement');
+            return { success: true, txHash: existing.txHash };
+        }
+
+        return null;
+    }
+
     async settle(payload: X402Payload): Promise<{ success: boolean; txHash?: string }> {
         const id = this.calculateId(payload);
         logger.info({ settlementId: id, sender: payload.sender }, 'Starting settlement process');

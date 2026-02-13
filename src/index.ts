@@ -77,6 +77,16 @@ export function createServer(dependencies: {
     app.post('/settle', async (req: Request, res: Response) => {
         try {
             const validated = SettleRequestSchema.parse(req.body);
+
+            // Check idempotency BEFORE verification/simulation.
+            // If we already settled this exact payload, return the cached result
+            // without re-simulating (the nonce would be stale on replay anyway).
+            const existingResult = await settler.checkIdempotency(validated.payload);
+            if (existingResult) {
+                res.json(existingResult);
+                return;
+            }
+
             await Verifier.verify(validated.payload, validated.requirements, provider, relayerManager);
             const result = await settler.settle(validated.payload);
             res.json(result);
